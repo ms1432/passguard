@@ -50,8 +50,8 @@ Spacja **nie** jest traktowana jako znak specjalny.
 [`PasswordGenerator`](app/Password/PasswordGenerator.php) gwarantuje, że wynik zawiera co
 najmniej jedną małą literę, jedną wielką literę, jedną cyfrę oraz jeden znak specjalny ze
 zbioru `!@#$%^&*()-_=+[]{};:,.?`. Losowość pochodzi z wstrzykiwanego
-`Random\Randomizer` (domyślnie bezpieczny silnik), dzięki czemu testy mogą podać
-`Mt19937` z ziarnem i uzyskać **powtarzalny** wynik. Nie użyto `rand`, `mt_rand`
+`Random\Randomizer` (domyślnie bezpieczny silnik); można też wstrzyknąć `Mt19937`
+z ziarnem, aby uzyskać powtarzalny wynik. Nie użyto `rand`, `mt_rand`
 ani `str_shuffle`. Długość spoza zakresu 8–64 powoduje `InvalidArgumentException`.
 
 ## Uruchomienie projektu
@@ -73,53 +73,6 @@ php artisan serve
 
 Aplikacja działa pod adresem **http://127.0.0.1:8000** (strona `GET /`).
 Nie jest potrzebny build npm/Vite — CSS i JavaScript są wbudowane w widok Blade.
-
-## Testy
-
-> **Status:** testy są dodawane w kolejnej sesji projektu. Obecnie katalog
-> [`tests/`](tests) zawiera jedynie bazową klasę [`TestCase.php`](tests/TestCase.php)
-> (domyślne testy `ExampleTest` zostały usunięte). Poniżej opisano zaplanowany zakres
-> testów oraz ich docelowe lokalizacje — kod aplikacji został napisany tak, by był łatwy
-> do przetestowania (czyste klasy, wstrzykiwane zależności, wstrzykiwany `Randomizer`).
-
-Uruchomienie testów (po ich dodaniu):
-
-```bash
-php artisan test
-# lub
-./vendor/bin/phpunit
-```
-
-### Testy jednostkowe (planowane) — `tests/Unit/`
-
-- **Reguły** (`tests/Unit/Password/Rules/`) — dla każdej z pięciu reguł: hasło spełniające
-  i niespełniające regułę, przypadki Unicode (np. cyfra arabsko-indyjska `١`), potwierdzenie,
-  że spacja **nie** jest znakiem specjalnym. Kod reguł: [`app/Password/Rules/`](app/Password/Rules).
-- **Enum siły** (`tests/Unit/Password/PasswordStrengthTest.php`) — mapowanie `score` → siła
-  dla granic 0, 2, 3, 4, 5. Kod: [`PasswordStrength`](app/Password/PasswordStrength.php).
-- **Checker** (`tests/Unit/Password/PasswordStrengthCheckerTest.php`) — poprawny `score`,
-  zawartość `failedRules` i kształt `toArray()`. Kod:
-  [`PasswordStrengthChecker`](app/Password/PasswordStrengthChecker.php),
-  [`StrengthResult`](app/Password/StrengthResult.php).
-- **Generator** (`tests/Unit/Password/PasswordGeneratorTest.php`) — poprawna długość,
-  obecność wszystkich wymaganych klas znaków, **determinizm** przy `Randomizer(new Mt19937(seed))`
-  oraz `InvalidArgumentException` dla długości 7 i 65. Kod:
-  [`PasswordGenerator`](app/Password/PasswordGenerator.php).
-
-### Testy integracyjne / funkcjonalne (planowane) — `tests/Feature/`
-
-- **`tests/Feature/Api/CheckPasswordTest.php`** — `POST /api/password/check`: hasło silne
-  (200, `score=5`), słabe (200, odpowiednie `failed_rules`), brak hasła (**422**).
-- **`tests/Feature/Api/GeneratePasswordTest.php`** — `GET /api/password/generate`: długość
-  domyślna (200, `length=16`), `length=7` (**422**), poprawny kształt odpowiedzi.
-- **`tests/Feature/HomePageTest.php`** — `GET /` zwraca stronę zawierającą pola o stałych
-  `id` (m.in. `password-input`).
-
-Kod objęty testami integracyjnymi:
-[`Api/PasswordController`](app/Http/Controllers/Api/PasswordController.php),
-[`CheckPasswordRequest`](app/Http/Requests/CheckPasswordRequest.php),
-[`GeneratePasswordRequest`](app/Http/Requests/GeneratePasswordRequest.php),
-[`routes/api.php`](routes/api.php).
 
 ## Dokumentacja API
 
@@ -211,30 +164,20 @@ Przykład:
 curl 'http://127.0.0.1:8000/api/password/generate?length=16' -H 'Accept: application/json'
 ```
 
-## Przypadki testowe dla testera manualnego (TestCase)
+## Interfejs użytkownika
 
-Testy manualne wykonujemy na stronie `GET /`. Elementy interfejsu mają stałe `id`:
+Strona `GET /` ([`resources/views/password.blade.php`](resources/views/password.blade.php))
+zawiera dwie sekcje — „Sprawdź hasło" oraz „Wygeneruj hasło" — pole wyniku (siła, wynik
+`X/5`, lista niespełnionych reguł) oraz pole błędu walidacji. Etykiety są po polsku, a styl
+i logika (`fetch`) są wbudowane w widok. Kluczowe elementy mają stałe `id`:
 `password-input`, `toggle-visibility`, `check-button`, `length-input`, `generate-button`,
 `result-strength`, `result-score`, `failed-rules`, `error-box`.
 
-| ID | Tytuł | Warunki wstępne | Kroki | Oczekiwany rezultat |
-|---|---|---|---|---|
-| TC-01 | Sprawdzenie silnego hasła | Strona otwarta | 1. W `password-input` wpisz `Abcdef1!` 2. Kliknij `check-button` | `result-strength` = **Silne** (zielony), `result-score` = „Wynik: 5/5”, lista `failed-rules` pusta |
-| TC-02 | Sprawdzenie słabego hasła | Strona otwarta | 1. W `password-input` wpisz `abc` 2. Kliknij `check-button` | `result-strength` = **Słabe** (czerwony), `result-score` = „Wynik: 1/5”, `failed-rules` zawiera 4 komunikaty PL |
-| TC-03 | Sprawdzenie hasła średniego | Strona otwarta | 1. W `password-input` wpisz `abcdefgh1` 2. Kliknij `check-button` | `result-strength` = **Średnie** (pomarańczowy), `result-score` = „Wynik: 3/5”, `failed-rules` zawiera brakujące reguły (wielka litera, znak specjalny) |
-| TC-04 | Pokaż / ukryj hasło | W `password-input` wpisane hasło | 1. Kliknij `toggle-visibility` 2. Kliknij ponownie | Po 1. hasło widoczne (typ `text`), przycisk „ukryj”; po 2. hasło zamaskowane (typ `password`), przycisk „pokaż” |
-| TC-05 | Generowanie hasła (domyślna długość) | `length-input` = 16 | 1. Kliknij `generate-button` | `password-input` wypełnione hasłem o długości 16, wynik pojawia się automatycznie: `result-strength` = **Silne**, „Wynik: 5/5” |
-| TC-06 | Generowanie hasła o wybranej długości | Strona otwarta | 1. Ustaw `length-input` = 24 2. Kliknij `generate-button` | Wygenerowane hasło ma 24 znaki i jest automatycznie oceniane jako **Silne** |
-| TC-07 | Walidacja długości (poza zakresem) | Strona otwarta | 1. Ustaw `length-input` = 7 2. Kliknij `generate-button` | `error-box` widoczny z komunikatem „The length field must be between 8 and 64.”; brak nowego hasła |
-| TC-08 | Puste hasło | `password-input` puste | 1. Kliknij `check-button` | `error-box` widoczny z komunikatem „The password field is required.” |
-
 ## Technologie użyte w projekcie
 
-- **PHP 8.3+** (testowane na 8.5)
+- **PHP 8.3+** (uruchamiane na 8.5)
 - **Laravel 13** (framework; routing, kontener DI, walidacja Form Requests)
 - **Blade** z wbudowanym, czystym **vanilla JavaScript** (`fetch`) i **CSS** (bez frameworka JS/CSS, bez build-stepu)
 - **Composer** — menedżer zależności
 - **`Random\Randomizer`** (bezpieczny silnik, wstrzykiwany) do generowania haseł
-- **PHPUnit** — framework testów jednostkowych/funkcjonalnych (testy w kolejnej sesji)
-- **Laravel Pint** — formatowanie kodu (PSR-12)
 - Konfiguracja **bez bazy danych**: sesja i cache na plikach, kolejka `sync`
